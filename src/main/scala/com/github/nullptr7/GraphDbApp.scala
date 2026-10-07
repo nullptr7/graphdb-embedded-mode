@@ -4,34 +4,38 @@ import zio.*
 import zio.logging.backend.SLF4J
 
 import java.nio.file.Paths
+import Rdf.*
 
 object GraphDbApp extends ZIOAppDefault:
 
   override val bootstrap: ZLayer[ZIOAppArgs, Any, Any] =
     Runtime.removeDefaultLoggers >>> SLF4J.slf4j
 
-  private val alice   = "http://example.org/person/1"
-  private val bob     = "http://example.org/person/2"
-  private val rdfType = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-  private val person  = "http://schema.org/Person"
-  private val name    = "http://schema.org/name"
+  private val alice            = Subject("http://example.org/person/1")
+  private val bob              = Subject("http://example.org/person/2")
+  private val rdfType          = Predicate("http://www.w3.org/1999/02/22-rdf-syntax-ns#type")
+  private val person           = IriObject("http://schema.org/Person")
+  private val name             = Predicate("http://schema.org/name")
+  private val aliceName        = Literal("Alice")
+  private val bobName          = Literal("Bob")
+  private val updatedAliceName = Literal("Alice Updated")
 
   private def program(database: GraphDb): IO[GraphDbError, Unit] =
     for
       _       <- database.addIri(alice, rdfType, person)
       _       <- database.addIri(bob, rdfType, person)
-      _       <- database.addLiteral(alice, name, "Alice")
-      _       <- database.addLiteral(bob, name, "Bob")
+      _       <- database.addLiteral(alice, name, aliceName)
+      _       <- database.addLiteral(bob, name, bobName)
       triples <- database.allTriples
       _       <- ZIO.logInfo(s"All triples: ${triples.mkString(", ")}")
       people  <- database.subjectsWithIri(rdfType, person)
       _       <- ZIO.logInfo(s"People: ${people.mkString(", ")}")
-      _       <- database.replaceLiteral(alice, name, "Alice", "Alice Updated")
+      _       <- database.replaceLiteral(alice, name, aliceName, updatedAliceName)
       _       <- database.removeIri(bob, rdfType, Some(person))
-      names   <- database.select("""
+      names   <- database.select(Query("""
         PREFIX schema: <http://schema.org/>
         SELECT ?name WHERE { ?person schema:name ?name }
-      """)
+      """))
       _       <- ZIO.logInfo(s"Names after update: $names")
     yield ()
 

@@ -1,6 +1,6 @@
 package com.github.nullptr7
 
-import org.eclipse.rdf4j.model.{IRI, Resource, Value}
+import org.eclipse.rdf4j.model.{IRI, Resource, Value as Rdf4jValue}
 import org.eclipse.rdf4j.model.impl.{SimpleValueFactory, TreeModel}
 import org.eclipse.rdf4j.model.util.Models
 import org.eclipse.rdf4j.model.vocabulary.RDF
@@ -17,24 +17,68 @@ import scala.jdk.CollectionConverters.*
 
 final case class GraphDbError(cause: Throwable) extends Exception(cause)
 
+object Rdf:
+  opaque type Subject   = String
+  opaque type Predicate = String
+  opaque type IriObject = String
+  opaque type Literal   = String
+  opaque type Value     = String
+  opaque type Query     = String
+
+  object Subject:
+    def apply(value: String): Subject = value
+
+  object Predicate:
+    def apply(value: String): Predicate = value
+
+  object IriObject:
+    def apply(value: String): IriObject = value
+
+  object Literal:
+    def apply(value: String): Literal = value
+
+  object Value:
+    private[nullptr7] def apply(value: String): Value = value
+
+  object Query:
+    def apply(value: String): Query = value
+
+  extension (value: Subject | Predicate | IriObject | Literal | Query)
+    private[nullptr7] def asString: String = value
+
+  extension (value: Value) def rendered: String = value
+
+final case class Triple(subject: Rdf.Subject, predicate: Rdf.Predicate, obj: Rdf.Value)
+
 trait GraphDb:
-  def addIri(subject:            String, predicate: String, obj:   String): IO[GraphDbError, Unit]
-  def addLiteral(subject:        String, predicate: String, value: String): IO[GraphDbError, Unit]
+  def addIri(
+      subject:   Rdf.Subject,
+      predicate: Rdf.Predicate,
+      obj:       Rdf.IriObject
+  ): IO[GraphDbError, Unit]
+  def addLiteral(
+      subject:   Rdf.Subject,
+      predicate: Rdf.Predicate,
+      value:     Rdf.Literal
+  ): IO[GraphDbError, Unit]
   def removeIri(
-      subject:   String,
-      predicate: String,
-      obj:       Option[String] = None
+      subject:   Rdf.Subject,
+      predicate: Rdf.Predicate,
+      obj:       Option[Rdf.IriObject] = None
   ): IO[GraphDbError, Unit]
   def replaceLiteral(
-      subject:   String,
-      predicate: String,
-      oldValue:  String,
-      newValue:  String
+      subject:   Rdf.Subject,
+      predicate: Rdf.Predicate,
+      oldValue:  Rdf.Literal,
+      newValue:  Rdf.Literal
   ): IO[GraphDbError, Unit]
-  def allTriples: IO[GraphDbError, List[(String, String, String)]]
-  def subjectsWithIri(predicate: String, obj:       String): IO[GraphDbError, List[String]]
-  def objectsFor(subject:        String, predicate: String): IO[GraphDbError, List[String]]
-  def select(query:              String): IO[GraphDbError, List[Map[String, String]]]
+  def allTriples: IO[GraphDbError, List[Triple]]
+  def subjectsWithIri(
+      predicate: Rdf.Predicate,
+      obj:       Rdf.IriObject
+  ): IO[GraphDbError, List[Rdf.Subject]]
+  def objectsFor(subject: Rdf.Subject, predicate: Rdf.Predicate): IO[GraphDbError, List[Rdf.Value]]
+  def select(query:       Rdf.Query): IO[GraphDbError, List[Map[String, Rdf.Value]]]
 
 object GraphDb:
   private val repositoryId                    = "graphdb-embedded"
@@ -89,7 +133,8 @@ object GraphDb:
     yield configuration
 
   private final class Live(repository: Repository, manager: LocalRepositoryManager) extends GraphDb:
-    private def iri(value: String): IRI = values.createIRI(value)
+    private def iri(value: Rdf.Subject | Rdf.Predicate | Rdf.IriObject): IRI =
+      values.createIRI(value.asString)
 
     private def withConnection[A](
         operation: RepositoryConnection => ZIO[Scope, GraphDbError, A]
@@ -99,48 +144,62 @@ object GraphDb:
     private def triples(
         subject:   Resource | Null,
         predicate: IRI | Null,
-        obj:       Value | Null
-    ): IO[GraphDbError, List[(String, String, String)]] =
+        obj:       Rdf4jValue | Null
+    ): IO[GraphDbError, List[Triple]] =
       withConnection { connection =>
         autoCloseable(connection.getStatements(subject, predicate, obj, true)).flatMap {
           statements =>
             attempt {
-              statements.asScala.map { statement =>
-                (
-                  statement.getSubject.stringValue,
-                  statement.getPredicate.stringValue,
-                  statement.getObject.toString
+              statements.asScala
+                .map(statement =>
+                  Triple(
+                    Rdf.Subject(statement.getSubject.stringValue),
+                    Rdf.Predicate(statement.getPredicate.stringValue),
+                    Rdf.Value(statement.getObject.toString)
+                  )
                 )
-              }.toList
+                .toList
             }
         }
       }
 
-    def addIri(subject: String, predicate: String, obj: String): IO[GraphDbError, Unit] =
+    def addIri(
+        subject:   Rdf.Subject,
+        predicate: Rdf.Predicate,
+        obj:       Rdf.IriObject
+    ): IO[GraphDbError, Unit] =
       withConnection(connection => attempt(connection.add(iri(subject), iri(predicate), iri(obj))))
 
-    def addLiteral(subject: String, predicate: String, value: String): IO[GraphDbError, Unit] =
+    def addLiteral(
+        subject:   Rdf.Subject,
+        predicate: Rdf.Predicate,
+        value:     Rdf.Literal
+    ): IO[GraphDbError, Unit] =
       withConnection(connection =>
-        attempt(connection.add(iri(subject), iri(predicate), values.createLiteral(value)))
+        attempt(connection.add(iri(subject), iri(predicate), values.createLiteral(value.asString)))
       )
 
-    def removeIri(subject: String, predicate: String, obj: Option[String]): IO[GraphDbError, Unit] =
+    def removeIri(
+        subject:   Rdf.Subject,
+        predicate: Rdf.Predicate,
+        obj:       Option[Rdf.IriObject]
+    ): IO[GraphDbError, Unit] =
       withConnection(connection =>
         attempt(connection.remove(iri(subject), iri(predicate), obj.map(iri).orNull))
       )
 
     def replaceLiteral(
-        subject:   String,
-        predicate: String,
-        oldValue:  String,
-        newValue:  String
+        subject:   Rdf.Subject,
+        predicate: Rdf.Predicate,
+        oldValue:  Rdf.Literal,
+        newValue:  Rdf.Literal
     ): IO[GraphDbError, Unit] =
       withConnection { connection =>
         attempt {
           connection.begin()
           try
-            connection.remove(iri(subject), iri(predicate), values.createLiteral(oldValue))
-            connection.add(iri(subject), iri(predicate), values.createLiteral(newValue))
+            connection.remove(iri(subject), iri(predicate), values.createLiteral(oldValue.asString))
+            connection.add(iri(subject), iri(predicate), values.createLiteral(newValue.asString))
             connection.commit()
           catch
             case error: Throwable =>
@@ -149,22 +208,28 @@ object GraphDb:
         }
       }
 
-    def allTriples: IO[GraphDbError, List[(String, String, String)]] = triples(null, null, null)
+    def allTriples: IO[GraphDbError, List[Triple]] = triples(null, null, null)
 
-    def subjectsWithIri(predicate: String, obj: String): IO[GraphDbError, List[String]] =
-      triples(null, iri(predicate), iri(obj)).map(_.map(_._1))
+    def subjectsWithIri(
+        predicate: Rdf.Predicate,
+        obj:       Rdf.IriObject
+    ): IO[GraphDbError, List[Rdf.Subject]] =
+      triples(null, iri(predicate), iri(obj)).map(_.map(_.subject))
 
-    def objectsFor(subject: String, predicate: String): IO[GraphDbError, List[String]] =
-      triples(iri(subject), iri(predicate), null).map(_.map(_._3))
+    def objectsFor(
+        subject:   Rdf.Subject,
+        predicate: Rdf.Predicate
+    ): IO[GraphDbError, List[Rdf.Value]] =
+      triples(iri(subject), iri(predicate), null).map(_.map(_.obj))
 
-    def select(query: String): IO[GraphDbError, List[Map[String, String]]] =
+    def select(query: Rdf.Query): IO[GraphDbError, List[Map[String, Rdf.Value]]] =
       withConnection { connection =>
-        autoCloseable(connection.prepareTupleQuery(QueryLanguage.SPARQL, query).evaluate())
+        autoCloseable(connection.prepareTupleQuery(QueryLanguage.SPARQL, query.asString).evaluate())
           .flatMap { results =>
             attempt {
               results.asScala.map { bindings =>
                 bindings.getBindingNames.asScala.iterator.map { name =>
-                  name -> bindings.getValue(name).toString
+                  name -> Rdf.Value(bindings.getValue(name).toString)
                 }.toMap
               }.toList
             }
