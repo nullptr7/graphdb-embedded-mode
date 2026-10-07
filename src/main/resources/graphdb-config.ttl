@@ -1,0 +1,29 @@
+# Configuration template for a GraphDB repository
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rep:   <http://www.openrdf.org/config/repository#> .
+@prefix sr:    <http://www.openrdf.org/config/repository/sail#> .
+@prefix sail:  <http://www.openrdf.org/config/sail#> .
+@prefix graphdb: <http://www.ontotext.com/config/graphdb#> .
+
+[] a rep:Repository ;
+    rep:repositoryID "graphdb-embedded" ;
+    rdfs:label "GraphDB Embedded Repository" ;
+    rep:repositoryImpl [
+        rep:repositoryType "graphdb:SailRepository" ;
+        sr:sailImpl [
+            sail:sailType "graphdb:Sail" ;
+            
+            graphdb:read-only "false" ;
+            
+            graphdb:ruleset "empty" ;
+            graphdb:check-for-inconsistencies "false" ;
+            
+            graphdb:entity-index-size "67108864" ;
+            graphdb:in-memory-literal-index "true" ;
+            graphdb:literal-index-size "10000000" ;
+            graphdb:literal-translation-mode "fast" ;
+            graphdb:enable-literal-index "true" ;
+            
+            graphdb:storage-format "3" ;
+        ] ;
+    ] .
