@@ -12,7 +12,7 @@ import org.eclipse.rdf4j.rio.{RDFFormat, Rio}
 import org.eclipse.rdf4j.rio.helpers.StatementCollector
 import zio.*
 
-import java.nio.file.Path
+import java.nio.file.{Path, Paths}
 import scala.jdk.CollectionConverters.*
 
 final case class GraphDbError(cause: Throwable) extends Exception(cause)
@@ -86,7 +86,16 @@ object GraphDb:
   private val legacyRepositoryConfigNamespace = "http://www.openrdf.org/config/repository#"
   private val repositoryConfigType = values.createIRI(legacyRepositoryConfigNamespace, "Repository")
 
-  def scoped(baseDirectory: Path): ZIO[Scope, GraphDbError, GraphDb] =
+  val live: ZLayer[GraphDbSettings, GraphDbError, GraphDb] =
+    ZLayer.scoped {
+      for
+        settings  <- ZIO.service[GraphDbSettings]
+        directory <- attempt(Paths.get(settings.location))
+        database  <- scoped(directory)
+      yield database
+    }
+
+  private def scoped(baseDirectory: Path): ZIO[Scope, GraphDbError, GraphDb] =
     for
       configuration <- loadConfiguration
       database      <- ZIO.acquireRelease(open(baseDirectory, configuration))(_.close.orDie)

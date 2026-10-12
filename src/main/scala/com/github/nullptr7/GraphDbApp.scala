@@ -1,15 +1,16 @@
 package com.github.nullptr7
 
 import zio.*
+import zio.config.typesafe.*
 import zio.logging.backend.SLF4J
 
-import java.nio.file.Paths
 import Rdf.*
 
 object GraphDbApp extends ZIOAppDefault:
 
   override val bootstrap: ZLayer[ZIOAppArgs, Any, Any] =
-    Runtime.removeDefaultLoggers >>> SLF4J.slf4j
+    (Runtime.removeDefaultLoggers >>> SLF4J.slf4j) ++
+      Runtime.setConfigProvider(ConfigProvider.fromResourcePath())
 
   private val alice            = Subject("http://example.org/person/1")
   private val bob              = Subject("http://example.org/person/2")
@@ -41,6 +42,7 @@ object GraphDbApp extends ZIOAppDefault:
 
   def run: ZIO[Any, Nothing, Unit] =
     ZIO
-      .scoped(GraphDb.scoped(Paths.get("repositories")).flatMap(program))
+      .serviceWithZIO[GraphDb](program)
+      .provide(GraphDbSettings.layer, GraphDb.live)
       .tapError(error => ZIO.logErrorCause("GraphDB operation failed", Cause.fail(error)))
       .orDie

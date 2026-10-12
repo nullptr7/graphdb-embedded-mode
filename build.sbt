@@ -9,6 +9,7 @@ lazy val root = rootProject
 
       "com.ontotext.graphdb" % "graphdb-runtime" % "10.8.13",
       "dev.zio" %% "zio" % "2.1.26",
+      "dev.zio" %% "zio-config-typesafe" % "4.0.2",
       "dev.zio" %% "zio-logging-slf4j" % "2.5.3",
       //You can add library dependencies here, for example,
       //"org.scalatest" %% "scalatest" % "3.2.19" % Test,
