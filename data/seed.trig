@@ -1,0 +1,18 @@
+@prefix ex: <http://example.org/person/> .
+@prefix schema: <http://schema.org/> .
+
+ex:1 a schema:Person ;
+  schema:name "Alice" .
+
+ex:2 a schema:Person ;
+  schema:name "Bob" .
+
+<http://example.org/graphs/team-a> {
+  ex:1 schema:memberOf <http://example.org/team/a> .
+  ex:3 a schema:Person ;
+    schema:name "Carol" .
+}
+
+<http://example.org/graphs/team-b> {
+  ex:2 schema:memberOf <http://example.org/team/b> .
+}

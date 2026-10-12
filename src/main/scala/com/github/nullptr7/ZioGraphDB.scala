@@ -13,6 +13,7 @@ import org.eclipse.rdf4j.rio.helpers.StatementCollector
 import zio.*
 
 import java.nio.file.{Path, Paths}
+import java.nio.file.Files
 import scala.jdk.CollectionConverters.*
 
 final case class GraphDbError(cause: Throwable) extends Exception(cause)
@@ -21,6 +22,7 @@ object Rdf:
   opaque type Subject   = String
   opaque type Predicate = String
   opaque type IriObject = String
+  opaque type Graph     = String
   opaque type Literal   = String
   opaque type Value     = String
   opaque type Query     = String
@@ -34,6 +36,13 @@ object Rdf:
   object IriObject:
     def apply(value: String): IriObject = value
 
+  object Graph:
+    def apply(value: String): Graph = value
+
+  enum ObjectFilter:
+    case Iri(value: Rdf.IriObject)
+    case Literal(value: Rdf.Literal)
+
   object Literal:
     def apply(value: String): Literal = value
 
@@ -43,7 +52,7 @@ object Rdf:
   object Query:
     def apply(value: String): Query = value
 
-  extension (value: Subject | Predicate | IriObject | Literal | Query)
+  extension (value: Subject | Predicate | IriObject | Graph | Literal | Query)
     private[nullptr7] def asString: String = value
 
   extension (value: Value) def rendered: String = value
@@ -51,6 +60,7 @@ object Rdf:
 final case class Triple(subject: Rdf.Subject, predicate: Rdf.Predicate, obj: Rdf.Value)
 
 trait GraphDb:
+  def load(path:          Path): IO[GraphDbError, Unit]
   def addIri(
       subject:   Rdf.Subject,
       predicate: Rdf.Predicate,
@@ -78,6 +88,16 @@ trait GraphDb:
       obj:       Rdf.IriObject
   ): IO[GraphDbError, List[Rdf.Subject]]
   def objectsFor(subject: Rdf.Subject, predicate: Rdf.Predicate): IO[GraphDbError, List[Rdf.Value]]
+  def objectsFor(
+      subject:   Rdf.Subject,
+      predicate: Rdf.Predicate,
+      graph:     Option[Rdf.Graph]
+  ): IO[GraphDbError, List[Rdf.Value]]
+  def subjectsFor(
+      predicate: Rdf.Predicate,
+      obj:       Rdf.ObjectFilter,
+      graph:     Option[Rdf.Graph]
+  ): IO[GraphDbError, List[Rdf.Subject]]
   def select(query:       Rdf.Query): IO[GraphDbError, List[Map[String, Rdf.Value]]]
 
 object GraphDb:
@@ -142,8 +162,24 @@ object GraphDb:
     yield configuration
 
   private final class Live(repository: Repository, manager: LocalRepositoryManager) extends GraphDb:
-    private def iri(value: Rdf.Subject | Rdf.Predicate | Rdf.IriObject): IRI =
+    private def iri(value: Rdf.Subject | Rdf.Predicate | Rdf.IriObject | Rdf.Graph): IRI =
       values.createIRI(value.asString)
+
+    def load(path: Path): IO[GraphDbError, Unit] =
+      withConnection { connection =>
+        autoCloseable(Files.newInputStream(path)).flatMap { input =>
+          attempt {
+            connection.begin()
+            try
+              connection.add(input, path.toUri.toString, RDFFormat.TRIG)
+              connection.commit()
+            catch
+              case error: Throwable =>
+                connection.rollback()
+                throw error
+          }
+        }
+      }
 
     private def withConnection[A](
         operation: RepositoryConnection => ZIO[Scope, GraphDbError, A]
@@ -153,10 +189,13 @@ object GraphDb:
     private def triples(
         subject:   Resource | Null,
         predicate: IRI | Null,
-        obj:       Rdf4jValue | Null
+        obj:       Rdf4jValue | Null,
+        graph:     Option[Rdf.Graph] = None
     ): IO[GraphDbError, List[Triple]] =
       withConnection { connection =>
-        autoCloseable(connection.getStatements(subject, predicate, obj, true)).flatMap {
+        val contexts =
+          graph.map(value => Array[Resource](iri(value))).getOrElse(Array.empty[Resource])
+        autoCloseable(connection.getStatements(subject, predicate, obj, true, contexts*)).flatMap {
           statements =>
             attempt {
               statements.asScala
@@ -229,7 +268,24 @@ object GraphDb:
         subject:   Rdf.Subject,
         predicate: Rdf.Predicate
     ): IO[GraphDbError, List[Rdf.Value]] =
-      triples(iri(subject), iri(predicate), null).map(_.map(_.obj))
+      objectsFor(subject, predicate, None)
+
+    def objectsFor(
+        subject:   Rdf.Subject,
+        predicate: Rdf.Predicate,
+        graph:     Option[Rdf.Graph]
+    ): IO[GraphDbError, List[Rdf.Value]] =
+      triples(iri(subject), iri(predicate), null, graph).map(_.map(_.obj).distinct)
+
+    def subjectsFor(
+        predicate: Rdf.Predicate,
+        obj:       Rdf.ObjectFilter,
+        graph:     Option[Rdf.Graph]
+    ): IO[GraphDbError, List[Rdf.Subject]] =
+      val value = obj match
+        case Rdf.ObjectFilter.Iri(iriObject)       => iri(iriObject)
+        case Rdf.ObjectFilter.Literal(literalText) => values.createLiteral(literalText.asString)
+      triples(null, iri(predicate), value, graph).map(_.map(_.subject).distinct)
 
     def select(query: Rdf.Query): IO[GraphDbError, List[Map[String, Rdf.Value]]] =
       withConnection { connection =>
