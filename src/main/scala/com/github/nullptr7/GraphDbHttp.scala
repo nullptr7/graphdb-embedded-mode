@@ -9,7 +9,7 @@ import scala.util.Try
 import Rdf.*
 
 object GraphDbHttp:
-  private enum Lookup:
+  private[nullptr7] enum Lookup:
     case Objects(subject: Subject, predicate: Predicate, graph: Option[Graph])
     case Subjects(predicate: Predicate, obj: ObjectFilter, graph: Option[Graph])
 
@@ -55,7 +55,7 @@ object GraphDbHttp:
           .map(obj => Lookup.Subjects(predicate, obj, graph))
       case _ => Left("provide exactly one of subject or object, together with predicate")
 
-  private def lookup(request: Request): Either[String, Lookup] =
+  private[nullptr7] def lookup(request: Request): Either[String, Lookup] =
     for
       validPredicate <- predicate(request)
       selectedGraph  <- graph(request)

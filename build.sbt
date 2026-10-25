@@ -13,8 +13,11 @@ lazy val root = rootProject
       "dev.zio" %% "zio-http" % "3.11.0",
       "dev.zio" %% "zio-json" % "0.9.0",
       "dev.zio" %% "zio-logging-slf4j" % "2.5.3",
+      "dev.zio" %% "zio-test" % "2.1.26" % Test,
+      "dev.zio" %% "zio-test-sbt" % "2.1.26" % Test,
       //You can add library dependencies here, for example,
       //"org.scalatest" %% "scalatest" % "3.2.19" % Test,
       //"org.scalameta" %% "munit" % "1.2.3" % Test
-    )
+    ),
+    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
   )
