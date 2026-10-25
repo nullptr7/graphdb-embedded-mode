@@ -6,7 +6,7 @@ import zio.http.Server
 import java.nio.file.Paths
 
 object GraphDbProgram:
-  val run: ZIO[GraphDb & GraphDbSettings & Server, GraphDbError, Unit] =
+  val run: RIO[GraphDb & GraphDbSettings & Server, Unit] =
     for
       settings <- ZIO.service[GraphDbSettings]
       database <- ZIO.service[GraphDb]

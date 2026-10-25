@@ -10,5 +10,5 @@ object GraphDbSettings:
       .map(GraphDbSettings.apply)
       .nested("graphdb")
 
-  val layer: ZLayer[Any, Config.Error, GraphDbSettings] =
+  val layer: TaskLayer[GraphDbSettings] =
     ZLayer.fromZIO(ZIO.config(config))

@@ -10,7 +10,7 @@ object GraphDbApp extends ZIOAppDefault:
     (Runtime.removeDefaultLoggers >>> SLF4J.slf4j) ++
       Runtime.setConfigProvider(ConfigProvider.fromResourcePath())
 
-  def run: ZIO[Any, Nothing, Unit] =
+  def run: UIO[Unit] =
     GraphDbProgram.run
       .provide(GraphDbSettings.layer, HttpSettings.layer, GraphDb.live, GraphDbHttp.server)
       .tapError(error => ZIO.logErrorCause("GraphDB operation failed", Cause.fail(error)))

@@ -8,5 +8,5 @@ object HttpSettings:
   val config: Config[HttpSettings] =
     Config.int("port").map(HttpSettings.apply).nested("http")
 
-  val layer: ZLayer[Any, Config.Error, HttpSettings] =
+  val layer: TaskLayer[HttpSettings] =
     ZLayer.fromZIO(ZIO.config(config))

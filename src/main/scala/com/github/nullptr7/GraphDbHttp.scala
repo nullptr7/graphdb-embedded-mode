@@ -9,6 +9,9 @@ import scala.util.Try
 import Rdf.*
 
 object GraphDbHttp:
+
+  private[nullptr7] type ErrorStringOr[A] = Either[String, A]
+
   private[nullptr7] enum Lookup:
     case Objects(subject: Subject, predicate: Predicate, graph: Option[Graph])
     case Subjects(predicate: Predicate, obj: ObjectFilter, graph: Option[Graph])
@@ -16,7 +19,7 @@ object GraphDbHttp:
   private def isAbsoluteIri(value: String): Boolean =
     Try(URI.create(value)).toOption.exists(_.isAbsolute)
 
-  private def iri(name: String, value: String): Either[String, String] =
+  private def iri(name: String, value: String): ErrorStringOr[String] =
     Either.cond(isAbsoluteIri(value), value, s"$name must be an absolute IRI")
 
   private def predicate(request: Request): Either[String, Predicate] =
@@ -25,7 +28,7 @@ object GraphDbHttp:
       valid <- iri("predicate", value)
     yield Predicate(valid)
 
-  private def graph(request: Request): Either[String, Option[Graph]] =
+  private def graph(request: Request): ErrorStringOr[Option[Graph]] =
     request.queryParam("graph") match
       case Some(value) => iri("graph", value).map(valid => Some(Graph(valid)))
       case None        => Right(None)
@@ -33,7 +36,7 @@ object GraphDbHttp:
   private def objectFilter(
       value:      String,
       objectType: Option[String]
-  ): Either[String, ObjectFilter] =
+  ): ErrorStringOr[ObjectFilter] =
     objectType match
       case Some("iri")                  =>
         iri("object", value).map(valid => ObjectFilter.Iri(IriObject(valid)))
@@ -46,7 +49,7 @@ object GraphDbHttp:
       request:   Request,
       predicate: Predicate,
       graph:     Option[Graph]
-  ): Either[String, Lookup] =
+  ): ErrorStringOr[Lookup] =
     (request.queryParam("subject"), request.queryParam("object")) match
       case (Some(value), None) =>
         iri("subject", value).map(valid => Lookup.Objects(Subject(valid), predicate, graph))
@@ -55,14 +58,14 @@ object GraphDbHttp:
           .map(obj => Lookup.Subjects(predicate, obj, graph))
       case _ => Left("provide exactly one of subject or object, together with predicate")
 
-  private[nullptr7] def lookup(request: Request): Either[String, Lookup] =
+  private[nullptr7] def lookup(request: Request): ErrorStringOr[Lookup] =
     for
       validPredicate <- predicate(request)
       selectedGraph  <- graph(request)
       result         <- lookupTerm(request, validPredicate, selectedGraph)
     yield result
 
-  private def query(request: Request): ZIO[GraphDb, Nothing, Response] =
+  private def query(request: Request): URIO[GraphDb, Response] =
     lookup(request) match
       case Left(message) => ZIO.succeed(Response.badRequest(message))
       case Right(Lookup.Objects(subject, predicate, graph)) =>
@@ -84,11 +87,11 @@ object GraphDbHttp:
     Method.GET / "query" -> handler { (request: Request) => query(request) }
   )
 
-  val server: ZLayer[HttpSettings, Throwable, Server] =
+  val server: RLayer[HttpSettings, Server] =
     ZLayer.fromZIO(
       ZIO.serviceWith[HttpSettings](settings =>
         Server.Config.default.binding("127.0.0.1", settings.port)
       )
     ) >>> Server.live
 
-  def serve: ZIO[GraphDb & Server, Nothing, Nothing] = Server.serve(routes)
+  def serve: URIO[GraphDb & Server, Nothing] = Server.serve(routes)
